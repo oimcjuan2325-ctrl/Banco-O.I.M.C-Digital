@@ -16,8 +16,6 @@
 
 <div id="loginSection" class="card">
     <h1>Tu Cuenta de Banco de la O.I.M.C.</h1>
-    <p>Iniciar sesión</p>
-    <input type="text" id="nombreUsuario" placeholder="Nombre / Usuario">
     <input type="password" id="pinInput" placeholder="PIN" maxlength="4">
     <button onclick="iniciarSesion()">Acceder</button>
 </div>
@@ -32,9 +30,10 @@
     <div id="adminPanel" class="hidden">
         <h3>Panel Admin</h3>
         <select id="userSelect"></select>
-        <input type="number" id="valorAccion" placeholder="Cantidad o Nuevo S.C.">
-        <button onclick="realizarAccionAdmin('Impuesto')">Cobrar Impuesto</button>
-        <button onclick="realizarAccionAdmin('SC')">Guardar S.C.</button>
+        <input type="number" id="valorAccion" placeholder="Cantidad / Valor">
+        <button onclick="adminAccion('Pagar')">Pagar Sueldo (Descuenta de Admin)</button>
+        <button onclick="adminAccion('Cobrar')">Cobrar Impuesto (Suma a Admin)</button>
+        <button onclick="adminAccion('SC')">Guardar S.C.</button>
     </div>
 
     <h3>Bizum</h3>
@@ -44,7 +43,8 @@
     <button onclick="hacerBizum()">Enviar Bizum</button>
 
     <h3>Historial</h3>
-    <div id="historial" style="max-height: 150px; overflow-y: auto;"></div>
+    <select id="historialSelect" onchange="verHistorial(this.value)"></select>
+    <div id="historialContenido" style="max-height: 150px; overflow-y: auto;"></div>
 </div>
 
 <script>
@@ -59,7 +59,7 @@
         "7562": { nombre: "Erika", saldo: 0, sc: 100, historial: [] },
         "9786": { nombre: "Nahia", saldo: 0, sc: 100, historial: [] },
         "1053": { nombre: "Amets", saldo: 0, sc: 100, historial: [] },
-        "2325": { nombre: "BANCO-OIMC", saldo: 1000, sc: 500, historial: [] }
+        "2325": { nombre: "BANCO-OIMC", saldo: 1000, sc: 100, historial: [] }
     };
 
     let usuarioActual = null;
@@ -82,12 +82,13 @@
 
         if(user.nombre === "BANCO-OIMC") document.getElementById('adminPanel').classList.remove('hidden');
 
-        let htmlSelect = "";
-        for(let p in db) htmlSelect += `<option value="${p}">${db[p].nombre}</option>`;
-        document.getElementById('userSelect').innerHTML = htmlSelect;
-        document.getElementById('destinatarioSelect').innerHTML = htmlSelect;
+        let options = "";
+        for(let p in db) options += `<option value="${p}">${db[p].nombre}</option>`;
+        document.getElementById('userSelect').innerHTML = options;
+        document.getElementById('destinatarioSelect').innerHTML = options;
+        document.getElementById('historialSelect').innerHTML = '<option value="">Elige usuario para ver historial</option>' + options;
 
-        document.getElementById('historial').innerHTML = user.historial.map(h => `<p>${h}</p>`).join('');
+        verHistorial(usuarioActual);
     }
 
     function hacerBizum() {
@@ -95,30 +96,42 @@
         const destPin = document.getElementById('destinatarioSelect').value;
         const msg = document.getElementById('bizumMsg').value;
 
+        if(cant <= 0 || isNaN(cant)) { alert("Introduce una cantidad válida"); return; }
         if(cant > db[usuarioActual].saldo) { alert("Saldo insuficiente"); return; }
         
+        // Ejecución de la resta al emisor y suma al receptor
         db[usuarioActual].saldo -= cant;
         db[destPin].saldo += cant;
-        const registro = `Bizum enviado a ${db[destPin].nombre}: ${cant} Oincalias. Mensaje: "${msg}"`;
-        db[usuarioActual].historial.push(registro);
-        db[destPin].historial.push(`Bizum recibido de ${db[usuarioActual].nombre}: ${cant} Oincalias. Mensaje: "${msg}"`);
         
+        const reg = `Bizum enviado a ${db[destPin].nombre}: ${cant} Oincalias. Mensaje: "${msg}"`;
+        db[usuarioActual].historial.push(reg);
+        db[destPin].historial.push(`Recibido ${cant} de ${db[usuarioActual].nombre}: "${msg}"`);
+        
+        localStorage.setItem('bancoOIMC', JSON.stringify(db));
+        render();
+        alert("Bizum enviado correctamente");
+    }
+
+    function adminAccion(tipo) {
+        const target = document.getElementById('userSelect').value;
+        const val = parseInt(document.getElementById('valorAccion').value);
+        
+        if(tipo === 'Pagar') {
+            db["2325"].saldo -= val;
+            db[target].saldo += val;
+        } else if(tipo === 'Cobrar') {
+            db[target].saldo -= val;
+            db["2325"].saldo += val;
+        } else {
+            db[target].sc = val;
+        }
         localStorage.setItem('bancoOIMC', JSON.stringify(db));
         render();
     }
 
-    function realizarAccionAdmin(tipo) {
-        const targetPin = document.getElementById('userSelect').value;
-        const val = parseInt(document.getElementById('valorAccion').value);
-        
-        if(tipo === 'Impuesto') {
-            db[targetPin].saldo -= val;
-            db["2325"].saldo += val;
-        } else if(tipo === 'SC') {
-            db[targetPin].sc = val;
-        }
-        localStorage.setItem('bancoOIMC', JSON.stringify(db));
-        render();
+    function verHistorial(pin) {
+        if(!pin) return;
+        document.getElementById('historialContenido').innerHTML = db[pin].historial.map(h => `<p>${h}</p>`).join('');
     }
 </script>
 </body>
