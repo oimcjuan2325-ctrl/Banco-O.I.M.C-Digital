@@ -4,84 +4,121 @@
     <meta charset="UTF-8">
     <title>Banco Central O.I.M.C.</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 350px; text-align: center; }
-        h1 { color: #1B365D; }
-        input { width: 80%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
-        button { background: #1B365D; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        body { font-family: 'Segoe UI', sans-serif; background: #eef2f7; display: flex; justify-content: center; padding: 20px; }
+        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 400px; }
+        input, select { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+        button { width: 100%; background: #1B365D; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer; margin-top: 10px; }
         .hidden { display: none; }
+        .info { background: #f9f9f9; padding: 10px; border-left: 4px solid #1B365D; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
 <div id="loginSection" class="card">
-    <h1>Acceso O.I.M.C.</h1>
-    <input type="password" id="pinInput" placeholder="Introduce tu PIN" maxlength="4">
+    <h1>Tu Cuenta de Banco de la O.I.M.C.</h1>
+    <p>Iniciar sesión</p>
+    <input type="text" id="nombreUsuario" placeholder="Nombre / Usuario">
+    <input type="password" id="pinInput" placeholder="PIN" maxlength="4">
     <button onclick="iniciarSesion()">Acceder</button>
 </div>
 
 <div id="appSection" class="card hidden">
-    <h2 id="userName"></h2>
-    <p>Saldo: <strong id="userSaldo"></strong> Oincalias</p>
-    <hr>
-    <input type="number" id="cantidad" placeholder="Cantidad">
-    <input type="text" id="destinatario" placeholder="Nombre destinatario">
-    <button onclick="realizarTransferencia()">Transferir</button>
-    <p id="msg"></p>
+    <h2 id="tituloDashboard"></h2>
+    <div class="info">
+        <p>Saldo: <strong id="saldo"></strong> Oincalias</p>
+        <p>Social Credit (S.C.): <strong id="sc"></strong></p>
+    </div>
+
+    <div id="adminPanel" class="hidden">
+        <h3>Panel Admin</h3>
+        <select id="userSelect"></select>
+        <input type="number" id="valorAccion" placeholder="Cantidad o Nuevo S.C.">
+        <button onclick="realizarAccionAdmin('Impuesto')">Cobrar Impuesto</button>
+        <button onclick="realizarAccionAdmin('SC')">Guardar S.C.</button>
+    </div>
+
+    <h3>Bizum</h3>
+    <select id="destinatarioSelect"></select>
+    <input type="number" id="bizumCant" placeholder="Cantidad">
+    <input type="text" id="bizumMsg" placeholder="Mensaje">
+    <button onclick="hacerBizum()">Enviar Bizum</button>
+
+    <h3>Historial</h3>
+    <div id="historial" style="max-height: 150px; overflow-y: auto;"></div>
 </div>
 
 <script>
-    // CENSO OFICIAL O.I.M.C. - ACTUALIZADO SEGÚN REGISTRO GUBERNAMENTAL
-    const baseDatosInicial = {
-        "2313": { nombre: "Juan", saldo: 10 },
-        "2021": { nombre: "Asier", saldo: 10 },
-        "1365": { nombre: "Jesús", saldo: 10 },
-        "1460": { nombre: "Yolanda", saldo: 10 },
-        "2013": { nombre: "Mikel", saldo: 10 },
-        "9837": { nombre: "Gaizka", saldo: 10 },
-        "7467": { nombre: "Iñaki", saldo: 10 },
-        "7562": { nombre: "Erika", saldo: 0 },
-        "9786": { nombre: "Nahia", saldo: 0 },
-        "1053": { nombre: "Amets", saldo: 0 },
-        "2325": { nombre: "BANCO-OIMC", saldo: 100 }
+    let db = JSON.parse(localStorage.getItem('bancoOIMC')) || {
+        "2313": { nombre: "Juan", saldo: 10, sc: 100, historial: [] },
+        "2021": { nombre: "Asier", saldo: 10, sc: 100, historial: [] },
+        "1365": { nombre: "Jesús", saldo: 10, sc: 100, historial: [] },
+        "1460": { nombre: "Yolanda", saldo: 10, sc: 100, historial: [] },
+        "2013": { nombre: "Mikel", saldo: 10, sc: 100, historial: [] },
+        "9837": { nombre: "Gaizka", saldo: 10, sc: 100, historial: [] },
+        "7467": { nombre: "Iñaki", saldo: 10, sc: 100, historial: [] },
+        "7562": { nombre: "Erika", saldo: 0, sc: 100, historial: [] },
+        "9786": { nombre: "Nahia", saldo: 0, sc: 100, historial: [] },
+        "1053": { nombre: "Amets", saldo: 0, sc: 100, historial: [] },
+        "2325": { nombre: "BANCO-OIMC", saldo: 1000, sc: 500, historial: [] }
     };
 
-    let usuarios = JSON.parse(localStorage.getItem('bancoOIMC')) || baseDatosInicial;
     let usuarioActual = null;
 
     function iniciarSesion() {
         const pin = document.getElementById('pinInput').value;
-        if (usuarios[pin]) {
+        if(db[pin]) {
             usuarioActual = pin;
             document.getElementById('loginSection').classList.add('hidden');
             document.getElementById('appSection').classList.remove('hidden');
-            actualizarUI();
-        } else { alert("PIN denegado por el Banco."); }
+            render();
+        } else { alert("PIN incorrecto"); }
     }
 
-    function actualizarUI() {
-        document.getElementById('userName').innerText = "Gobernanza: " + usuarios[usuarioActual].nombre;
-        document.getElementById('userSaldo').innerText = usuarios[usuarioActual].saldo;
-        localStorage.setItem('bancoOIMC', JSON.stringify(usuarios));
+    function render() {
+        const user = db[usuarioActual];
+        document.getElementById('tituloDashboard').innerText = "Bienvenido, " + user.nombre;
+        document.getElementById('saldo').innerText = user.saldo;
+        document.getElementById('sc').innerText = user.sc;
+
+        if(user.nombre === "BANCO-OIMC") document.getElementById('adminPanel').classList.remove('hidden');
+
+        let htmlSelect = "";
+        for(let p in db) htmlSelect += `<option value="${p}">${db[p].nombre}</option>`;
+        document.getElementById('userSelect').innerHTML = htmlSelect;
+        document.getElementById('destinatarioSelect').innerHTML = htmlSelect;
+
+        document.getElementById('historial').innerHTML = user.historial.map(h => `<p>${h}</p>`).join('');
     }
 
-    function realizarTransferencia() {
-        const cantidad = parseInt(document.getElementById('cantidad').value);
-        const destNombre = document.getElementById('destinatario').value;
+    function hacerBizum() {
+        const cant = parseInt(document.getElementById('bizumCant').value);
+        const destPin = document.getElementById('destinatarioSelect').value;
+        const msg = document.getElementById('bizumMsg').value;
 
-        if (isNaN(cantidad) || cantidad <= 0) { document.getElementById('msg').innerText = "Cantidad no válida."; return; }
-        if (cantidad > usuarios[usuarioActual].saldo) { document.getElementById('msg').innerText = "Saldo insuficiente."; return; }
-
-        let destPIN = Object.keys(usuarios).find(pin => usuarios[pin].nombre === destNombre);
+        if(cant > db[usuarioActual].saldo) { alert("Saldo insuficiente"); return; }
         
-        if (destPIN) {
-            usuarios[usuarioActual].saldo -= cantidad;
-            usuarios[destPIN].saldo += cantidad;
-            actualizarUI();
-            document.getElementById('msg').innerText = "Transacción validada.";
-        } else {
-            document.getElementById('msg').innerText = "Destinatario no reconocido.";
+        db[usuarioActual].saldo -= cant;
+        db[destPin].saldo += cant;
+        const registro = `Bizum enviado a ${db[destPin].nombre}: ${cant} Oincalias. Mensaje: "${msg}"`;
+        db[usuarioActual].historial.push(registro);
+        db[destPin].historial.push(`Bizum recibido de ${db[usuarioActual].nombre}: ${cant} Oincalias. Mensaje: "${msg}"`);
+        
+        localStorage.setItem('bancoOIMC', JSON.stringify(db));
+        render();
+    }
+
+    function realizarAccionAdmin(tipo) {
+        const targetPin = document.getElementById('userSelect').value;
+        const val = parseInt(document.getElementById('valorAccion').value);
+        
+        if(tipo === 'Impuesto') {
+            db[targetPin].saldo -= val;
+            db["2325"].saldo += val;
+        } else if(tipo === 'SC') {
+            db[targetPin].sc = val;
         }
+        localStorage.setItem('bancoOIMC', JSON.stringify(db));
+        render();
     }
 </script>
 </body>
