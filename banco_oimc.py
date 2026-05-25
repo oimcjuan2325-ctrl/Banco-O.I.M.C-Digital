@@ -34,6 +34,7 @@ def guardar_base_datos(datos):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(datos, f, ensure_ascii=False, indent=4)
 
+if os.path.exists(DB_FILE): os.remove(DB_FILE)
 # Inicializar los datos en la memoria de la web
 if "db" not in st.session_state:
     st.session_state.db = cargar_base_datos()
