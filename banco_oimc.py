@@ -20,7 +20,7 @@ DB_INICIAL = {
     "7562": {"nombre": "Erika", "saldo": 0, "sc": 70, "historial": []},
     "9786": {"nombre": "Nahia", "saldo": 0, "sc": 70, "historial": []},
     "1053": {"nombre": "Amets", "saldo": 0, "sc": 70, "historial": []},
-    "2325": {"nombre": "BANCO-OIMC", "saldo": 1000, "sc": 100, "historial": []}
+    "2325": {"nombre": "BANCO-OIMC", "saldo": 1160, "sc": 100, "historial": []}
 }
 
 # Funciones para leer y escribir en el archivo JSON (Garantiza el guardado permanente)
