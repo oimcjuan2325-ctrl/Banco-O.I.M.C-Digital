@@ -36,7 +36,7 @@ def obtener_fecha_actual():
 def cargar_base_datos():
     db_inicial = {
         ADMIN_USER: {
-            "nombre": "BANCO-OIMC",
+            "nombre": "BANCO_OIMC",
             "gmail": ADMIN_EMAIL,
             "password": ADMIN_PASS,
             "estado": "AUTORIZADO",
@@ -47,20 +47,33 @@ def cargar_base_datos():
             "historial": []
         }
     }
-    if not os.path.exists(DB_FILE):
+    
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                datos = json.load(f)
+                
+                # ELIMINAR CUENTAS ANTIGUAS MOLESTAS (Como "Juan")
+                if "Juan" in datos:
+                    del datos["Juan"]
+                
+                # Asegurar que el administrador (BANCO_OIMC) esté perfecto
+                datos[ADMIN_USER] = {
+                    "nombre": "BANCO_OIMC",
+                    "gmail": ADMIN_EMAIL,
+                    "password": ADMIN_PASS,
+                    "estado": "AUTORIZADO",
+                    "fecha_autorizacion": datos.get(ADMIN_USER, {}).get("fecha_autorizacion", "22 de julio de 2026"),
+                    "bloqueo_hasta": None,
+                    "saldo": datos.get(ADMIN_USER, {}).get("saldo", 1160),
+                    "sc": datos.get(ADMIN_USER, {}).get("sc", 100),
+                    "historial": datos.get(ADMIN_USER, {}).get("historial", [])
+                }
+                return datos
+        except:
+            return db_inicial
+    else:
         guardar_base_datos(db_inicial)
-        return db_inicial
-    try:
-        with open(DB_FILE, "r", encoding="utf-8") as f:
-            datos = json.load(f)
-            if ADMIN_USER not in datos:
-                datos[ADMIN_USER] = db_inicial[ADMIN_USER]
-            else:
-                datos[ADMIN_USER]["gmail"] = ADMIN_EMAIL
-                datos[ADMIN_USER]["password"] = ADMIN_PASS
-                datos[ADMIN_USER]["estado"] = "AUTORIZADO"
-            return datos
-    except:
         return db_inicial
 
 def guardar_base_datos(datos):
@@ -286,7 +299,6 @@ if not st.session_state.autenticado:
         st.title("🏛️ Banco Central O.I.M.C.")
         st.subheader("Editar datos de tu cuenta")
         
-        # Guardamos en session_state si ya pasó la verificación previa
         if 'edit_verificado' not in st.session_state:
             st.session_state.edit_verificado = False
             st.session_state.edit_user_target = ""
@@ -320,7 +332,6 @@ if not st.session_state.autenticado:
                     st.session_state.modo_pantalla = "login"
                     st.rerun()
         else:
-            # Ya verificado: mostrar campos nuevos
             usr_antiguo = st.session_state.edit_user_target
             datos_actuales = db_usuarios[usr_antiguo]
 
@@ -339,7 +350,6 @@ if not st.session_state.autenticado:
                     elif nuevo_user != usr_antiguo and (nuevo_user == ADMIN_USER or nuevo_user in db_usuarios):
                         st.error("Ese nombre de usuario ya está ocupado.")
                     else:
-                        # Si cambia el nombre de usuario, reubicamos la clave en el diccionario
                         if nuevo_user != usr_antiguo:
                             db_usuarios[nuevo_user] = db_usuarios.pop(usr_antiguo)
                         
@@ -381,7 +391,6 @@ if not st.session_state.autenticado:
             elif u_login in db_usuarios:
                 usr_data = db_usuarios[u_login]
                 
-                # Comprobar bloqueo temporal de 5 días
                 bloqueo_hasta_str = usr_data.get("bloqueo_hasta")
                 if bloqueo_hasta_str:
                     tiempo_limite = datetime.fromisoformat(bloqueo_hasta_str)
@@ -437,7 +446,6 @@ else:
     st.title("Sistema Bancario Central O.I.M.C.")
     st.header(f"Bienvenido, {mis_datos.get('nombre', usuario_actual_id)}")
     
-    # Indicadores de Saldo y Social Credit
     col1, col2 = st.columns(2)
     with col1:
         st.metric(label="Tu Saldo Disponible", value=f"{mis_datos['saldo']} Oincalias")
@@ -533,7 +541,7 @@ else:
 
             with tab_eco:
                 st.subheader("🛠️ Panel de Gestión Económica y Social")
-                usuarios_ciudadanos = [u["nombre"] for u in db_usuarios.values() if u["nombre"] != "BANCO-OIMC" and u.get("estado") == "AUTORIZADO"]
+                usuarios_ciudadanos = [u["nombre"] for u in db_usuarios.values() if u["nombre"] != ADMIN_USER and u.get("estado") == "AUTORIZADO"]
                 
                 if not usuarios_ciudadanos:
                     st.info("No hay ciudadanos con cuentas autorizadas disponibles para gestionar.")
@@ -555,10 +563,10 @@ else:
                                 db_usuarios[id_ciudadano]["historial"].append(f"Cobro de sueldo: +{cantidad_sueldo} Oincalias.")
                                 db_usuarios[ADMIN_USER]["historial"].append(f"Sueldo pagado a {ciudadano_elegido}: -{cantidad_sueldo} Oincalias.")
                                 guardar_base_datos(db_usuarios)
-                                st.success(f"Sueldo pagado correctamente. Se han descontado {cantidad_sueldo} a BANCO-OIMC.")
+                                st.success(f"Sueldo pagado correctamente. Se han descontado {cantidad_sueldo} a {ADMIN_USER}.")
                                 st.rerun()
                             else:
-                                st.error("Fallo fiscal: La cuenta central BANCO-OIMC no tiene dinero suficiente.")
+                                st.error(f"Fallo fiscal: La cuenta central {ADMIN_USER} no tiene dinero suficiente.")
                                 
                     with tab_impuestos:
                         cantidad_impuesto = st.number_input("Cantidad de oincalias a cobrar de impuesto:", min_value=1, step=1, key="admin_tax")
@@ -569,7 +577,7 @@ else:
                                 db_usuarios[id_ciudadano]["historial"].append(f"Impuesto pagado: -{cantidad_impuesto} Oincalias.")
                                 db_usuarios[ADMIN_USER]["historial"].append(f"Impuesto recaudado de {ciudadano_elegido}: +{cantidad_impuesto} Oincalias.")
                                 guardar_base_datos(db_usuarios)
-                                st.success(f"Impuesto cobrado con éxito. Se han sumado {cantidad_impuesto} a BANCO-OIMC.")
+                                st.success(f"Impuesto cobrado con éxito. Se han sumado {cantidad_impuesto} a {ADMIN_USER}.")
                                 st.rerun()
                             else:
                                 st.error(f"El ciudadano {ciudadano_elegido} no tiene suficiente saldo para abonar este impuesto.")
