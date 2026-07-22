@@ -649,5 +649,4 @@ else:
     if st.button("Cerrar Sesión"):
         st.session_state.autenticado = False
         st.session_state.usuario_actual = None
-        st.session_state.modo_pantalla = "login"
         st.rerun()
