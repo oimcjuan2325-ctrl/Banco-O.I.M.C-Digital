@@ -32,7 +32,7 @@ def obtener_fecha_actual():
     mes = MESES[now.month]
     return f"{now.day} de {mes} de {now.year}"
 
-# --- FUNCIONES DE BASE DE DATOS Y CORREO ---
+# --- FUNCIONES DE BASE DE DATOS Y PERSISTENCIA ---
 def cargar_base_datos():
     db_inicial = {
         ADMIN_USER: {
@@ -48,28 +48,35 @@ def cargar_base_datos():
         }
     }
     
+    # Sincronización con session_state para evitar pérdidas por reinicios de la nube
+    if 'db_memoria' in st.session_state and st.session_state.db_memoria:
+        return st.session_state.db_memoria
+
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 datos = json.load(f)
                 
-                # Asegurar siempre que el administrador (BANCO_OIMC) esté perfecto y actualizado
-                datos[ADMIN_USER] = {
-                    "nombre": "BANCO_OIMC",
-                    "gmail": ADMIN_EMAIL,
-                    "password": ADMIN_PASS,
-                    "estado": "AUTORIZADO",
-                    "fecha_autorizacion": datos.get(ADMIN_USER, {}).get("fecha_autorizacion", "22 de julio de 2026"),
-                    "bloqueo_hasta": None,
-                    "saldo": datos.get(ADMIN_USER, {}).get("saldo", 1160),
-                    "sc": datos.get(ADMIN_USER, {}).get("sc", 100),
-                    "historial": datos.get(ADMIN_USER, {}).get("historial", [])
-                }
-                return datos
-        except:
+            # Asegurar siempre que el administrador esté perfecto
+            datos[ADMIN_USER] = {
+                "nombre": "BANCO_OIMC",
+                "gmail": ADMIN_EMAIL,
+                "password": ADMIN_PASS,
+                "estado": "AUTORIZADO",
+                "fecha_autorizacion": datos.get(ADMIN_USER, {}).get("fecha_autorizacion", "22 de julio de 2026"),
+                "bloqueo_hasta": None,
+                "saldo": datos.get(ADMIN_USER, {}).get("saldo", 1160),
+                "sc": datos.get(ADMIN_USER, {}).get("sc", 100),
+                "historial": datos.get(ADMIN_USER, {}).get("historial", [])
+            }
+            st.session_state.db_memoria = datos
+            return datos
+        except Exception:
+            st.session_state.db_memoria = db_inicial
             return db_inicial
     else:
         guardar_base_datos(db_inicial)
+        st.session_state.db_memoria = db_inicial
         return db_inicial
 
 def guardar_base_datos(datos):
@@ -77,8 +84,16 @@ def guardar_base_datos(datos):
         datos[ADMIN_USER]["gmail"] = ADMIN_EMAIL
         datos[ADMIN_USER]["password"] = ADMIN_PASS
         datos[ADMIN_USER]["estado"] = "AUTORIZADO"
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(datos, f, ensure_ascii=False, indent=4)
+    
+    # Guardar en memoria de sesión para persistencia inmediata
+    st.session_state.db_memoria = datos
+    
+    # Guardar en archivo local
+    try:
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(datos, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
 
 def enviar_email(destino, asunto, cuerpo):
     msg = MIMEText(cuerpo, 'plain', 'utf-8')
@@ -144,7 +159,7 @@ Ya puede acceder y utilizar las funciones del banco."""
         cuerpo = f"""Lo sentimos mucho, pero su cuenta ({usuario}) no ha sido autorizada por el Administrador del Banco. 
 
 Por favor, inténtelo de nuevo más tarde o contacte con el Administrador."""
-    enviar_email(gmail_destino, usuario, password, estado)
+    enviar_email(gmail_destino, asunto, cuerpo)
 
 # --- ESTILOS CSS ---
 st.markdown("""
@@ -233,7 +248,7 @@ if not st.session_state.autenticado:
                         "estado": "PENDIENTE",
                         "fecha_autorizacion": "",
                         "bloqueo_hasta": None,
-                        "saldo": 0,  # <-- SALDO INICIAL A CERO PATATERO
+                        "saldo": 0,
                         "sc": 100,
                         "historial": ["Cuenta creada con saldo inicial de 0 Oincalias."]
                     }
