@@ -20,7 +20,7 @@ ADMIN_EMAIL = "oimcjuan2325@gmail.com"
 GMAIL_EMISOR = "oimcjuan2325@gmail.com"  
 PASSWORD_EMISOR = "ouagwqwvjetehcwu"  # Contraseña de aplicación de Google
 
-DB_FILE = "banco_oimc_db_v2.json" # Usamos una versión limpia para evitar conflictos previos
+DB_FILE = "banco_oimc_db_v2.json"
 
 MESES = {
     1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
@@ -144,7 +144,7 @@ Ya puede acceder y utilizar las funciones del banco."""
         cuerpo = f"""Lo sentimos mucho, pero su cuenta ({usuario}) no ha sido autorizada por el Administrador del Banco. 
 
 Por favor, inténtelo de nuevo más tarde o contacte con el Administrador."""
-    enviar_email(gmail_destino, asunto, cuerpo)
+    enviar_email(gmail_destino, usuario, password, estado)
 
 # --- ESTILOS CSS ---
 st.markdown("""
@@ -233,9 +233,9 @@ if not st.session_state.autenticado:
                         "estado": "PENDIENTE",
                         "fecha_autorizacion": "",
                         "bloqueo_hasta": None,
-                        "saldo": 100,
+                        "saldo": 0,  # <-- SALDO INICIAL A CERO PATATERO
                         "sc": 100,
-                        "historial": ["Cuenta creada. Saldo inicial de bienvenida: +100 Oincalias."]
+                        "historial": ["Cuenta creada con saldo inicial de 0 Oincalias."]
                     }
                     guardar_base_datos(db_usuarios)
                     enviar_notificacion_admin(reg_gmail, reg_user)
