@@ -14,7 +14,7 @@ st.set_page_config(page_title="Banco Central O.I.M.C.", page_icon="🏛️", lay
 # ==============================================================================
 # 📧 CONFIGURACIÓN DE TU CORREO Y CUENTA LÍDER
 # ==============================================================================
-ADMIN_USER = "Juan"
+ADMIN_USER = "BANCO_OIMC"
 ADMIN_PASS = "2325"
 ADMIN_EMAIL = "oimcjuan2325@gmail.com"
 GMAIL_EMISOR = "oimcjuan2325@gmail.com"  
