@@ -20,7 +20,7 @@ ADMIN_EMAIL = "oimcjuan2325@gmail.com"
 GMAIL_EMISOR = "oimcjuan2325@gmail.com"  
 PASSWORD_EMISOR = "ouagwqwvjetehcwu"  # Contraseña de aplicación de Google
 
-DB_FILE = "banco_oimc_db.json"
+DB_FILE = "banco_oimc_db_v2.json" # Usamos una versión limpia para evitar conflictos previos
 
 MESES = {
     1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
@@ -53,11 +53,7 @@ def cargar_base_datos():
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 datos = json.load(f)
                 
-                # ELIMINAR CUENTAS ANTIGUAS MOLESTAS (Como "Juan")
-                if "Juan" in datos:
-                    del datos["Juan"]
-                
-                # Asegurar que el administrador (BANCO_OIMC) esté perfecto
+                # Asegurar siempre que el administrador (BANCO_OIMC) esté perfecto y actualizado
                 datos[ADMIN_USER] = {
                     "nombre": "BANCO_OIMC",
                     "gmail": ADMIN_EMAIL,
@@ -99,14 +95,14 @@ def enviar_email(destino, asunto, cuerpo):
         server.sendmail(GMAIL_EMISOR, [destino], msg.as_string())
         server.quit()
         return True
-    except Exception as e1:
+    except Exception:
         try:
             server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15)
             server.login(GMAIL_EMISOR, PASSWORD_EMISOR)
             server.sendmail(GMAIL_EMISOR, [destino], msg.as_string())
             server.quit()
             return True
-        except Exception as e2:
+        except Exception:
             return False
 
 def enviar_notificacion_admin(gmail_solicitante, usuario_solicitante):
@@ -198,7 +194,6 @@ db_usuarios = cargar_base_datos()
 # =========================================================
 if not st.session_state.autenticado:
 
-    # MODO: MENSAJE DE ESPERA POST-REGISTRO
     if st.session_state.modo_pantalla == "registro_completado":
         st.markdown("""
         <div class="notice-box">
@@ -212,7 +207,6 @@ if not st.session_state.autenticado:
             st.session_state.modo_pantalla = "login"
             st.rerun()
 
-    # MODO: CREAR CUENTA NUEVA
     elif st.session_state.modo_pantalla == "registro":
         st.title("🏛️ Banco Central O.I.M.C.")
         st.subheader("Crear cuenta bancaria nueva")
@@ -252,7 +246,6 @@ if not st.session_state.autenticado:
                 st.session_state.modo_pantalla = "login"
                 st.rerun()
 
-    # MODO: CIERRE PERMANENTE DE CUENTA
     elif st.session_state.modo_pantalla == "cierre_permanente":
         st.title("🏛️ Banco Central O.I.M.C.")
         st.subheader("Cerrar cuenta permanentemente")
@@ -294,7 +287,6 @@ if not st.session_state.autenticado:
                 st.session_state.modo_pantalla = "login"
                 st.rerun()
 
-    # MODO: EDITAR TU CUENTA (VERIFICACIÓN + NUEVOS DATOS)
     elif st.session_state.modo_pantalla == "editar_cuenta":
         st.title("🏛️ Banco Central O.I.M.C.")
         st.subheader("Editar datos de tu cuenta")
@@ -372,7 +364,6 @@ if not st.session_state.autenticado:
                     st.session_state.modo_pantalla = "login"
                     st.rerun()
 
-    # MODO: INICIO DE SESIÓN NORMAL (POR DEFECTO)
     else:
         st.title("🏛️ Banco Central O.I.M.C.")
         st.subheader("Iniciar sesión")
@@ -454,9 +445,6 @@ else:
         
     st.markdown("---")
 
-    # -----------------------------------------------------
-    # PANEL EXCLUSIVO PARA CUENTA ADMIN
-    # -----------------------------------------------------
     if es_admin:
         with st.expander("👑 PANEL DE ADMINISTRADOR Y GESTIÓN DE CUENTAS", expanded=True):
             tab_pend, tab_aut, tab_no_aut, tab_eco = st.tabs([
@@ -601,9 +589,6 @@ else:
 
         st.markdown("---")
 
-    # -----------------------------------------------------
-    # SECCIÓN DE ENVIAR BIZUM
-    # -----------------------------------------------------
     st.subheader("📱 Enviar transferencia instantánea (Bizum)")
     destinatarios_disponibles = [u["nombre"] for u in db_usuarios.values() if u["nombre"] != mis_datos.get("nombre", usuario_actual_id) and u.get("estado") == "AUTORIZADO"]
     
@@ -635,9 +620,6 @@ else:
                 
     st.markdown("---")
 
-    # -----------------------------------------------------
-    # SECCIÓN HISTORIAL PERSONAL
-    # -----------------------------------------------------
     st.subheader("🗂️ Historial de tu cuenta bancaria")
     if mis_datos["historial"]:
         for transaccion in reversed(mis_datos["historial"]):
