@@ -1,82 +1,347 @@
 import streamlit as st
+import numpy as np
+import time
 import json
 import os
+import smtplib
+from datetime import datetime, timedelta
+from email.mime.text import MIMEText
+from email.header import Header
 
-# Configuración visual de la página web
-st.set_page_config(page_title="Banco Central O.I.M.C.", page_icon="🏛️", layout="centered")
+# --- CONFIGURACIÓN DE LA PÁGINA ---
+st.set_page_config(page_title="Banco Central O.I.M.C.", page_icon="🏛️", layout="wide")
 
-# Nombre del archivo donde se guardará absolutamente todo
+# ==============================================================================
+# 📧 CONFIGURACIÓN DE TU CORREO Y CUENTA LÍDER
+# ==============================================================================
+ADMIN_USER = "Juan"
+ADMIN_PASS = "2325"
+ADMIN_EMAIL = "oimcjuan2325@gmail.com"
+GMAIL_EMISOR = "oimcjuan2325@gmail.com"  
+PASSWORD_EMISOR = "ouagwqwvjetehcwu"  # Contraseña de aplicación de Google
+
 DB_FILE = "banco_oimc_db.json"
 
-# Base de datos oficial inicial con los nombres y PINES reales que me diste
-DB_INICIAL = {
-    "2313": {"nombre": "Juan", "saldo": 10, "sc": 70, "historial": []},
-    "2021": {"nombre": "Asier", "saldo": 10, "sc": 70, "historial": []},
-    "1365": {"nombre": "Jesús", "saldo": 10, "sc": 70, "historial": []},
-    "1460": {"nombre": "Yolanda", "saldo": 10, "sc": 70, "historial": []},
-    "2013": {"nombre": "Mikel", "saldo": 10, "sc": 70, "historial": []},
-    "9837": {"nombre": "Gaizka", "saldo": 10, "sc": 70, "historial": []},
-    "7467": {"nombre": "Iñaki", "saldo": 10, "sc": 70, "historial": []},
-    "7562": {"nombre": "Erika", "saldo": 0, "sc": 70, "historial": []},
-    "9786": {"nombre": "Nahia", "saldo": 0, "sc": 70, "historial": []},
-    "1053": {"nombre": "Amets", "saldo": 0, "sc": 70, "historial": []},
-    "2325": {"nombre": "BANCO-OIMC", "saldo": 1160, "sc": 100, "historial": []}
+MESES = {
+    1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
+    7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
 }
 
-# Funciones para leer y escribir en el archivo JSON (Garantiza el guardado permanente)
+def obtener_fecha_actual():
+    now = datetime.now()
+    mes = MESES[now.month]
+    return f"{now.day} de {mes} de {now.year}"
+
+# --- FUNCIONES DE BASE DE DATOS Y CORREO ---
 def cargar_base_datos():
-    if os.path.exists(DB_FILE):
+    db_inicial = {
+        ADMIN_USER: {
+            "nombre": "BANCO-OIMC",
+            "gmail": ADMIN_EMAIL,
+            "password": ADMIN_PASS,
+            "estado": "AUTORIZADO",
+            "fecha_autorizacion": "22 de julio de 2026",
+            "bloqueo_hasta": None,
+            "saldo": 1160,
+            "sc": 100,
+            "historial": []
+        }
+    }
+    if not os.path.exists(DB_FILE):
+        guardar_base_datos(db_inicial)
+        return db_inicial
+    try:
         with open(DB_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return DB_INICIAL
+            datos = json.load(f)
+            # Asegurar que el admin siempre esté presente y actualizado
+            if ADMIN_USER not in datos:
+                datos[ADMIN_USER] = db_inicial[ADMIN_USER]
+            else:
+                datos[ADMIN_USER]["gmail"] = ADMIN_EMAIL
+                datos[ADMIN_USER]["password"] = ADMIN_PASS
+                datos[ADMIN_USER]["estado"] = "AUTORIZADO"
+            return datos
+    except:
+        return db_inicial
 
 def guardar_base_datos(datos):
+    if ADMIN_USER in datos:
+        datos[ADMIN_USER]["gmail"] = ADMIN_EMAIL
+        datos[ADMIN_USER]["password"] = ADMIN_PASS
+        datos[ADMIN_USER]["estado"] = "AUTORIZADO"
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(datos, f, ensure_ascii=False, indent=4)
 
-# Inicializar los datos en la memoria de la web
-if "db" not in st.session_state:
-    st.session_state.db = cargar_base_datos()
+def enviar_email(destino, asunto, cuerpo):
+    msg = MIMEText(cuerpo, 'plain', 'utf-8')
+    msg['Subject'] = Header(asunto, 'utf-8')
+    msg['From'] = GMAIL_EMISOR
+    msg['To'] = destino
 
-if "usuario_conectado" not in st.session_state:
-    st.session_state.usuario_conectado = None
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=15)
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
+        server.login(GMAIL_EMISOR, PASSWORD_EMISOR)
+        server.sendmail(GMAIL_EMISOR, [destino], msg.as_string())
+        server.quit()
+        return True
+    except Exception as e1:
+        try:
+            server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15)
+            server.login(GMAIL_EMISOR, PASSWORD_EMISOR)
+            server.sendmail(GMAIL_EMISOR, [destino], msg.as_string())
+            server.quit()
+            return True
+        except Exception as e2:
+            return False
+
+def enviar_notificacion_admin(gmail_solicitante, usuario_solicitante):
+    asunto = f"🚨 BANCO OIMC: Nueva solicitud de registro de {usuario_solicitante}"
+    cuerpo = f"""Se ha registrado una nueva solicitud en el Banco Central O.I.M.C.:
+
+- Usuario: {usuario_solicitante}
+- Gmail: {gmail_solicitante}
+
+Inicia sesión en la web con tu cuenta de Administrador para AUTORIZAR o NO AUTORIZAR el acceso."""
+    enviar_email(ADMIN_EMAIL, asunto, cuerpo)
+
+def enviar_confirmacion_usuario(gmail_destino, usuario, password, estado):
+    if estado == "AUTORIZADO":
+        asunto = "✅ Cuenta Bancaria Autorizada - Banco O.I.M.C."
+        cuerpo = f"""Felicitaciones, su cuenta bancaria ha sido autorizada. Ya puede iniciar sesión en la web del banco.
+
+----------------------------------------
+📌 SUS DATOS DE ACCESO:
+• Nombre de usuario: {usuario}
+• Contraseña: {password}
+----------------------------------------
+
+Ya puede acceder y utilizar las funciones del banco."""
+    else:
+        asunto = "❌ Estado de Solicitud de Cuenta Bancaria"
+        cuerpo = f"""Lo sentimos mucho, pero su cuenta ({usuario}) no ha sido autorizada por el Administrador del Banco. 
+
+Por favor, inténtelo de nuevo más tarde o contacte con el Administrador."""
+    enviar_email(gmail_destino, asunto, cuerpo)
+
+# --- ESTILOS CSS ---
+st.markdown("""
+<style>
+    .warning-banner {
+        background-color: #3d0000;
+        color: #ff4d4d;
+        padding: 15px;
+        border-radius: 8px;
+        border: 2px solid #ff0000;
+        font-weight: bold;
+        margin-bottom: 15px;
+        text-align: center;
+    }
+    .notice-box {
+        background-color: #0e2a38;
+        color: #a3e5ff;
+        padding: 25px;
+        border-radius: 10px;
+        border: 2px solid #00aaff;
+        font-size: 18px;
+        text-align: center;
+        margin-top: 20px;
+    }
+    .permanent-warning {
+        background-color: #4a0000;
+        color: #ffb3b3;
+        padding: 20px;
+        border-radius: 10px;
+        border: 2px solid #ff3333;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# --- ESTADOS DE SESIÓN ---
+if 'autenticado' not in st.session_state: st.session_state.autenticado = False
+if 'usuario_actual' not in st.session_state: st.session_state.usuario_actual = None
+if 'modo_pantalla' not in st.session_state: st.session_state.modo_pantalla = "login"
+
+db_usuarios = cargar_base_datos()
 
 # =========================================================
-# 1. PANTALLA DE INICIO DE SESIÓN (LOGIN)
+# 1. GESTIÓN DE ACCESO (LOGIN, REGISTRO, CIERRE PERMANENTE)
 # =========================================================
-if st.session_state.usuario_conectado is None:
-    st.title("Tu Cuenta de Banco de la O.I.M.C.")
-    st.subheader("Iniciar sesión")
-    
-    input_user = st.text_input("Nombre / Usuario:")
-    input_pin = st.text_input("PIN:", type="password", max_chars=4)
-    
-    if st.button("Iniciar sesión"):
-        # Verificamos si el PIN existe en el censo
-        if input_pin in st.session_state.db:
-            datos_cuenta = st.session_state.db[input_pin]
-            # Validamos que el nombre introducido sea exactamente igual (sin importar mayúsculas)
-            if datos_cuenta["nombre"].lower() == input_user.strip().lower():
-                st.session_state.usuario_conectado = input_pin
-                st.success(f"Sesión iniciada como {datos_cuenta['nombre']}")
+if not st.session_state.autenticado:
+
+    # MODO: MENSAJE DE ESPERA POST-REGISTRO
+    if st.session_state.modo_pantalla == "registro_completado":
+        st.markdown("""
+        <div class="notice-box">
+            <h2>📩 Solicitud enviada con éxito</h2>
+            <p>Tiene que esperar hasta que el Administrador le autorice la cuenta.</p>
+            <p>Cuando sea autorizada o rechazada, se le mandará un correo de notificación. Esté atento a su Gmail.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.write("")
+        if st.button("⬅️ Volver al Inicio de Sesión"):
+            st.session_state.modo_pantalla = "login"
+            st.rerun()
+
+    # MODO: CREAR CUENTA NUEVA
+    elif st.session_state.modo_pantalla == "registro":
+        st.title("🏛️ Banco Central O.I.M.C.")
+        st.subheader("Crear cuenta bancaria nueva")
+        
+        reg_gmail = st.text_input("Introduce tu Gmail:", key="reg_gmail")
+        reg_user = st.text_input("Nombre de usuario:", key="reg_user")
+        reg_pass = st.text_input("Contraseña:", type="password", key="reg_pass")
+        
+        st.write("")
+        col_reg1, col_reg2 = st.columns([1, 2])
+        with col_reg1:
+            if st.button("Crear cuenta", key="btn_reg"):
+                if not reg_gmail or not reg_user or not reg_pass:
+                    st.warning("Por favor, rellene todos los campos.")
+                elif "@" not in reg_gmail:
+                    st.error("El formato del correo electrónico no es válido.")
+                elif reg_user == ADMIN_USER or reg_user in db_usuarios:
+                    st.error("Ese nombre de usuario ya está ocupado. Elija otro.")
+                else:
+                    db_usuarios[reg_user] = {
+                        "nombre": reg_user,
+                        "gmail": reg_gmail,
+                        "password": reg_pass,
+                        "estado": "PENDIENTE",
+                        "fecha_autorizacion": "",
+                        "bloqueo_hasta": None,
+                        "saldo": 100,  # Saldo inicial de cortesía para nuevos usuarios
+                        "sc": 100,     # Social credit inicial
+                        "historial": ["Cuenta creada. Saldo inicial de bienvenida: +100 Oincalias."]
+                    }
+                    guardar_base_datos(db_usuarios)
+                    enviar_notificacion_admin(reg_gmail, reg_user)
+                    st.session_state.modo_pantalla = "registro_completado"
+                    st.rerun()
+        with col_reg2:
+            if st.button("Cancelar y volver"):
+                st.session_state.modo_pantalla = "login"
                 st.rerun()
+
+    # MODO: CIERRE PERMANENTE DE CUENTA
+    elif st.session_state.modo_pantalla == "cierre_permanente":
+        st.title("🏛️ Banco Central O.I.M.C.")
+        st.subheader("Cerrar cuenta permanentemente")
+        
+        st.markdown("""
+        <div class="permanent-warning">
+            ⚠️ ADVERTENCIA: Al cerrar tu cuenta, esta quedará bloqueada durante 5 días (120 horas) antes de poder volver a utilizarse.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        perm_gmail = st.text_input("Introduce tu Gmail:", key="perm_gmail")
+        perm_user = st.text_input("Introduce tu Nombre de usuario:", key="perm_user")
+        perm_pass = st.text_input("Introduce tu Contraseña:", type="password", key="perm_pass")
+        
+        st.write("")
+        col_p1, col_p2 = st.columns([1, 2])
+        with col_p1:
+            if st.button("Cerrar cuenta definitivamente", key="btn_ejecutar_cierre"):
+                if not perm_gmail or not perm_user or not perm_pass:
+                    st.warning("Por favor, rellene todos los campos.")
+                elif perm_user == ADMIN_USER:
+                    st.error("La cuenta administradora principal no puede cerrarse permanentemente.")
+                elif perm_user in db_usuarios:
+                    usr_data = db_usuarios[perm_user]
+                    if usr_data["gmail"] == perm_gmail and usr_data["password"] == perm_pass:
+                        tiempo_bloqueo = datetime.now() + timedelta(hours=120)
+                        db_usuarios[perm_user]["bloqueo_hasta"] = tiempo_bloqueo.isoformat()
+                        guardar_base_datos(db_usuarios)
+                        st.success("Cuenta cerrada definitivamente. Ha sido bloqueada temporalmente por 5 días.")
+                        time.sleep(2)
+                        st.session_state.modo_pantalla = "login"
+                        st.rerun()
+                    else:
+                        st.error("Los datos introducidos (Gmail, usuario o contraseña) no coinciden.")
+                else:
+                    st.error("El usuario especificado no existe en el sistema.")
+        with col_p2:
+            if st.button("Cancelar y volver"):
+                st.session_state.modo_pantalla = "login"
+                st.rerun()
+
+    # MODO: INICIO DE SESIÓN NORMAL (POR DEFECTO)
+    else:
+        st.title("🏛️ Banco Central O.I.M.C.")
+        st.subheader("Iniciar sesión")
+        
+        u_login = st.text_input("Nombre / Usuario:")
+        p_login = st.text_input("Contraseña / PIN:", type="password")
+        
+        st.write("")
+        if st.button("Iniciar sesión"):
+            if u_login == ADMIN_USER and p_login == ADMIN_PASS:
+                st.session_state.autenticado = True
+                st.session_state.usuario_actual = ADMIN_USER
+                st.success("Acceso concedido como Administrador del Banco.")
+                time.sleep(1)
+                st.rerun()
+            elif u_login in db_usuarios:
+                usr_data = db_usuarios[u_login]
+                
+                # Comprobar bloqueo temporal de 5 días
+                bloqueo_hasta_str = usr_data.get("bloqueo_hasta")
+                if bloqueo_hasta_str:
+                    tiempo_limite = datetime.fromisoformat(bloqueo_hasta_str)
+                    if datetime.now() < tiempo_limite:
+                        tiempo_restante = tiempo_limite - datetime.now()
+                        horas_restantes = int(tiempo_restante.total_seconds() // 3600)
+                        minutos_restantes = int((tiempo_restante.total_seconds() % 3600) // 60)
+                        st.error(f"⚠️ Cuenta bloqueada por cierre definitivo. Debe esperar {horas_restantes} horas y {minutos_restantes} minutos.")
+                        st.stop()
+                    else:
+                        usr_data["bloqueo_hasta"] = None
+                        guardar_base_datos(db_usuarios)
+
+                if usr_data["password"] == p_login:
+                    if usr_data["estado"] == "AUTORIZADO":
+                        st.session_state.autenticado = True
+                        st.session_state.usuario_actual = u_login
+                        st.success(f"Sesión iniciada correctamente como {u_login}")
+                        time.sleep(1)
+                        st.rerun()
+                    elif usr_data["estado"] == "RECHAZADO":
+                        st.error("Lo sentimos mucho, pero su cuenta ha sido rechazada por el Administrador.")
+                    else:
+                        st.info("Su cuenta está pendiente de revisión por el Administrador. Vuelva a intentarlo más tarde.")
+                else:
+                    st.warning("Contraseña incorrecta.")
             else:
-                st.error("El nombre de usuario no coincide con el PIN introducido.")
-        else:
-            st.error("PIN incorrecto. No coincide con ningún usuario del sistema.")
+                st.error("El usuario no existe en el sistema. Por favor, cree una cuenta.")
+
+        st.divider()
+        col_btn1, col_btn2 = st.columns([1, 1])
+        with col_btn1:
+            if st.button("🔗 Crear una cuenta nueva", type="secondary"):
+                st.session_state.modo_pantalla = "registro"
+                st.rerun()
+        with col_btn2:
+            if st.button("🔒 Cerrar cuenta permanentemente", type="secondary"):
+                st.session_state.modo_pantalla = "cierre_permanente"
+                st.rerun()
 
 # =========================================================
 # 2. PANTALLA PRINCIPAL DEL BANCO (LOGUEADO)
 # =========================================================
 else:
-    pin_actual = st.session_state.usuario_conectado
-    mis_datos = st.session_state.db[pin_actual]
-    es_admin = (mis_datos["nombre"] == "BANCO-OIMC")
+    usuario_actual_id = st.session_state.usuario_actual
+    mis_datos = db_usuarios[usuario_actual_id]
+    es_admin = (usuario_actual_id == ADMIN_USER)
 
     st.title("Sistema Bancario Central O.I.M.C.")
-    st.header(f"Bienvenido, {mis_datos['nombre']}")
+    st.header(f"Bienvenido, {mis_datos.get('nombre', usuario_actual_id)}")
     
-    # Se muestran únicamente los indicadores de Saldo y Social Credit
+    # Indicadores de Saldo y Social Credit
     col1, col2 = st.columns(2)
     with col1:
         st.metric(label="Tu Saldo Disponible", value=f"{mis_datos['saldo']} Oincalias")
@@ -86,78 +351,165 @@ else:
     st.markdown("---")
 
     # -----------------------------------------------------
-    # PANEL EXCLUSIVO PARA CUENTA ADMIN ("BANCO-OIMC")
+    # PANEL EXCLUSIVO PARA CUENTA ADMIN ("Juan" / Administrador)
     # -----------------------------------------------------
     if es_admin:
-        st.subheader("🛠️ Panel de Gestión Económica y Social (Administrador)")
-        
-        # Filtramos la lista para poder elegir a cualquier usuario excepto a sí mismo
-        usuarios_ciudadanos = [u["nombre"] for u in st.session_state.db.values() if u["nombre"] != "BANCO-OIMC"]
-        ciudadano_elegido = st.selectbox("Selecciona un ciudadano para gestionar:", usuarios_ciudadanos)
-        
-        # Buscamos el PIN del ciudadano seleccionado
-        pin_ciudadano = [p for p, u in st.session_state.db.items() if u["nombre"] == ciudadano_elegido][0]
-        datos_ciudadano = st.session_state.db[pin_ciudadano]
-        
-        # Pestañas para organizar las acciones de administrador
-        tab_sueldos, tab_impuestos, tab_sc, tab_historiales = st.tabs([
-            "💰 Pago de Sueldos", "🏛️ Cobro de Impuestos", "📊 Social Credit", "🔍 Historiales Globales"
-        ])
-        
-        # Acción: Pago de Sueldos (Descuenta de Admin y suma al usuario)
-        with tab_sueldos:
-            cantidad_sueldo = st.number_input("Cantidad de oincalias a pagar de sueldo:", min_value=1, step=1, key="admin_pay")
-            if st.button("Pagar Sueldo"):
-                if st.session_state.db["2325"]["saldo"] >= cantidad_sueldo:
-                    st.session_state.db["2325"]["saldo"] -= cantidad_sueldo
-                    st.session_state.db[pin_ciudadano]["saldo"] += cantidad_sueldo
-                    
-                    # Registro de la operación en ambos historiales
-                    st.session_state.db[pin_ciudadano]["historial"].append(f"Cobro de sueldo: +{cantidad_sueldo} Oincalias.")
-                    st.session_state.db["2325"]["historial"].append(f"Sueldo pagado a {ciudadano_elegido}: -{cantidad_sueldo} Oincalias.")
-                    
-                    guardar_base_datos(st.session_state.db)
-                    st.success(f"Sueldo pagado correctamente. Se han descontado {cantidad_sueldo} a BANCO-OIMC.")
-                    st.rerun()
+        with st.expander("👑 PANEL DE ADMINISTRADOR Y GESTIÓN DE CUENTAS", expanded=True):
+            tab_pend, tab_aut, tab_no_aut, tab_eco = st.tabs([
+                "⏳ Cuentas Pendientes", 
+                "✅ Cuentas Autorizadas", 
+                "❌ Cuentas Rechazadas",
+                "🏛️ Gestión Económica y Social"
+            ])
+            
+            # 1. CUENTAS PENDIENTES
+            with tab_pend:
+                pendientes = {u: d for u, d in db_usuarios.items() if d.get("estado") == "PENDIENTE" and u != ADMIN_USER}
+                if not pendientes:
+                    st.info("No hay ninguna cuenta en proceso de autorización.")
                 else:
-                    st.error("Fallo fiscal: La cuenta central BANCO-OIMC no tiene dinero suficiente.")
-                    
-        # Acción: Cobro de Impuestos (Resta al usuario y suma a Admin)
-        with tab_impuestos:
-            cantidad_impuesto = st.number_input("Cantidad de oincalias a cobrar de impuesto:", min_value=1, step=1, key="admin_tax")
-            if st.button("Cobrar Impuesto"):
-                if datos_ciudadano["saldo"] >= cantidad_impuesto:
-                    st.session_state.db[pin_ciudadano]["saldo"] -= cantidad_impuesto
-                    st.session_state.db["2325"]["saldo"] += cantidad_impuesto
-                    
-                    # Registro de la operación en ambos historiales
-                    st.session_state.db[pin_ciudadano]["historial"].append(f"Impuesto pagado: -{cantidad_impuesto} Oincalias.")
-                    st.session_state.db["2325"]["historial"].append(f"Impuesto recaudado de {ciudadano_elegido}: +{cantidad_impuesto} Oincalias.")
-                    
-                    guardar_base_datos(st.session_state.db)
-                    st.success(f"Impuesto cobrado con éxito. Se han sumado {cantidad_impuesto} a BANCO-OIMC.")
-                    st.rerun()
+                    for usr, data in pendientes.items():
+                        c1, c2, c3 = st.columns([2, 1, 1])
+                        with c1:
+                            st.write(f"👤 **Usuario:** `{usr}`\n\n 📧 **Gmail:** `{data['gmail']}`\n\n 🔑 **Contraseña:** `{data['password']}`")
+                        with c2:
+                            if st.button(f"✅ Autorizar", key=f"aut_{usr}"):
+                                fecha_hoy = obtener_fecha_actual()
+                                db_usuarios[usr]["estado"] = "AUTORIZADO"
+                                db_usuarios[usr]["fecha_autorizacion"] = fecha_hoy
+                                guardar_base_datos(db_usuarios)
+                                enviar_confirmacion_usuario(data["gmail"], usr, data["password"], "AUTORIZADO")
+                                st.success(f"{usr} autorizado el {fecha_hoy} y notificado.")
+                                time.sleep(1)
+                                st.rerun()
+                        with c3:
+                            if st.button(f"❌ No Autorizar", key=f"no_aut_{usr}"):
+                                db_usuarios[usr]["estado"] = "RECHAZADO"
+                                guardar_base_datos(db_usuarios)
+                                enviar_confirmacion_usuario(data["gmail"], usr, data["password"], "RECHAZADO")
+                                st.error(f"{usr} rechazado y notificado.")
+                                time.sleep(1)
+                                st.rerun()
+                        st.divider()
+
+            # 2. CUENTAS AUTORIZADAS
+            with tab_aut:
+                autorizadas = {u: d for u, d in db_usuarios.items() if d.get("estado") == "AUTORIZADO"}
+                if not autorizadas:
+                    st.info("No hay cuentas autorizadas.")
                 else:
-                    st.error(f"El ciudadano {ciudadano_elegido} no tiene suficiente saldo para abonar este impuesto.")
-                    
-        # Acción: Cambio de Social Credit con barrita deslizable
-        with tab_sc:
-            sc_actual = datos_ciudadano["sc"]
-            nuevo_sc = st.slider("Ajustar nivel de Social Credit (S.C.):", min_value=0, max_value=1000, value=int(sc_actual))
-            if st.button("Guardar Social Credit"):
-                st.session_state.db[pin_ciudadano]["sc"] = nuevo_sc
-                guardar_base_datos(st.session_state.db)
-                st.success(f"Social Credit de {ciudadano_elegido} actualizado a {nuevo_sc} puntos.")
-                st.rerun()
+                    for usr, data in autorizadas.items():
+                        c1, c2 = st.columns([3, 1])
+                        fecha_str = data.get("fecha_autorizacion", "Fecha no registrada")
+                        with c1:
+                            if usr == ADMIN_USER:
+                                st.write(f"👑 **Administrador Principal:** `{usr}` — `{data['gmail']}`")
+                            else:
+                                st.write(f"👤 **Usuario:** `{usr}` | 📧 `{data['gmail']}` | 🔑 `{data['password']}`\n\n📅 Autorizado el: `{fecha_str}`")
+                        with c2:
+                            if usr != ADMIN_USER:
+                                if st.button(f"🚫 Desautorizar", key=f"desaut_{usr}"):
+                                    db_usuarios[usr]["estado"] = "RECHAZADO"
+                                    guardar_base_datos(db_usuarios)
+                                    st.warning(f"Se ha desautorizado la cuenta {usr}.")
+                                    time.sleep(1)
+                                    st.rerun()
+                        st.divider()
+
+            # 3. CUENTAS RECHAZADAS
+            with tab_no_aut:
+                no_autorizadas = {u: d for u, d in db_usuarios.items() if d.get("estado") == "RECHAZADO" and u != ADMIN_USER}
+                if not no_autorizadas:
+                    st.info("No hay cuentas rechazadas.")
+                else:
+                    for usr, data in no_autorizadas.items():
+                        c1, c2 = st.columns([3, 1])
+                        with c1:
+                            st.write(f"👤 **Usuario:** `{usr}` | 📧 `{data['gmail']}` | 🔑 `{data['password']}`")
+                        with c2:
+                            if st.button(f"✅ Autorizar", key=f"re_aut_{usr}"):
+                                fecha_hoy = obtener_fecha_actual()
+                                db_usuarios[usr]["estado"] = "AUTORIZADO"
+                                db_usuarios[usr]["fecha_autorizacion"] = fecha_hoy
+                                guardar_base_datos(db_usuarios)
+                                enviar_confirmacion_usuario(data["gmail"], usr, data["password"], "AUTORIZADO")
+                                st.success(f"{usr} ha sido autorizada el {fecha_hoy}.")
+                                time.sleep(1)
+                                st.rerun()
+                        st.divider()
+
+            # 4. GESTIÓN ECONÓMICA Y SOCIAL
+            with tab_eco:
+                st.subheader("🛠️ Panel de Gestión Económica y Social")
                 
-        # Acción: Ver historial de todos (Elegir usuario y ver su historial)
-        with tab_historiales:
-            st.write(f"Historial de transacciones de: **{ciudadano_elegido}**")
-            if datos_ciudadano["historial"]:
-                for transaccion in reversed(datos_ciudadano["historial"]):
-                    st.text(f"• {transaccion}")
-            else:
-                st.info("Este ciudadano no tiene movimientos registrados.")
+                # Lista de ciudadanos válidos (excluyendo al admin)
+                usuarios_ciudadanos = [u["nombre"] for u in db_usuarios.values() if u["nombre"] != "BANCO-OIMC" and u.get("estado") == "AUTORIZADO"]
+                
+                if not usuarios_ciudadanos:
+                    st.info("No hay ciudadanos con cuentas autorizadas disponibles para gestionar.")
+                else:
+                    ciudadano_elegido = st.selectbox("Selecciona un ciudadano para gestionar:", usuarios_ciudadanos)
+                    
+                    # Buscamos la clave del ciudadano seleccionado
+                    id_ciudadano = [p for p, u in db_usuarios.items() if u["nombre"] == ciudadano_elegido][0]
+                    datos_ciudadano = db_usuarios[id_ciudadano]
+                    
+                    tab_sueldos, tab_impuestos, tab_sc, tab_historiales = st.tabs([
+                        "💰 Pago de Sueldos", "🏛️ Cobro de Impuestos", "📊 Social Credit", "🔍 Historiales Globales"
+                    ])
+                    
+                    # Pago de Sueldos
+                    with tab_sueldos:
+                        cantidad_sueldo = st.number_input("Cantidad de oincalias a pagar de sueldo:", min_value=1, step=1, key="admin_pay")
+                        if st.button("Pagar Sueldo"):
+                            if db_usuarios[ADMIN_USER]["saldo"] >= cantidad_sueldo:
+                                db_usuarios[ADMIN_USER]["saldo"] -= cantidad_sueldo
+                                db_usuarios[id_ciudadano]["saldo"] += cantidad_sueldo
+                                
+                                db_usuarios[id_ciudadano]["historial"].append(f"Cobro de sueldo: +{cantidad_sueldo} Oincalias.")
+                                db_usuarios[ADMIN_USER]["historial"].append(f"Sueldo pagado a {ciudadano_elegido}: -{cantidad_sueldo} Oincalias.")
+                                
+                                guardar_base_datos(db_usuarios)
+                                st.success(f"Sueldo pagado correctamente. Se han descontado {cantidad_sueldo} a BANCO-OIMC.")
+                                st.rerun()
+                            else:
+                                st.error("Fallo fiscal: La cuenta central BANCO-OIMC no tiene dinero suficiente.")
+                                
+                    # Cobro de Impuestos
+                    with tab_impuestos:
+                        cantidad_impuesto = st.number_input("Cantidad de oincalias a cobrar de impuesto:", min_value=1, step=1, key="admin_tax")
+                        if st.button("Cobrar Impuesto"):
+                            if datos_ciudadano["saldo"] >= cantidad_impuesto:
+                                db_usuarios[id_ciudadano]["saldo"] -= cantidad_impuesto
+                                db_usuarios[ADMIN_USER]["saldo"] += cantidad_impuesto
+                                
+                                db_usuarios[id_ciudadano]["historial"].append(f"Impuesto pagado: -{cantidad_impuesto} Oincalias.")
+                                db_usuarios[ADMIN_USER]["historial"].append(f"Impuesto recaudado de {ciudadano_elegido}: +{cantidad_impuesto} Oincalias.")
+                                
+                                guardar_base_datos(db_usuarios)
+                                st.success(f"Impuesto cobrado con éxito. Se han sumado {cantidad_impuesto} a BANCO-OIMC.")
+                                st.rerun()
+                            else:
+                                st.error(f"El ciudadano {ciudadano_elegido} no tiene suficiente saldo para abonar este impuesto.")
+                                
+                    # Social Credit
+                    with tab_sc:
+                        sc_actual = datos_ciudadano["sc"]
+                        nuevo_sc = st.slider("Ajustar nivel de Social Credit (S.C.):", min_value=0, max_value=1000, value=int(sc_actual))
+                        if st.button("Guardar Social Credit"):
+                            db_usuarios[id_ciudadano]["sc"] = nuevo_sc
+                            guardar_base_datos(db_usuarios)
+                            st.success(f"Social Credit de {ciudadano_elegido} actualizado a {nuevo_sc} puntos.")
+                            st.rerun()
+                            
+                    # Historiales Globales
+                    with tab_historiales:
+                        st.write(f"Historial de transacciones de: **{ciudadano_elegido}**")
+                        if datos_ciudadano["historial"]:
+                            for transaccion in reversed(datos_ciudadano["historial"]):
+                                st.text(f"• {transaccion}")
+                        else:
+                            st.info("Este ciudadano no tiene movimientos registrados.")
 
         st.markdown("---")
 
@@ -166,36 +518,38 @@ else:
     # -----------------------------------------------------
     st.subheader("📱 Enviar transferencia instantánea (Bizum)")
     
-    # Lista de destinatarios excluyendo al propio usuario que envía
-    destinatarios_disponibles = [u["nombre"] for u in st.session_state.db.values() if u["nombre"] != mis_datos["nombre"]]
-    usuario_receptor = st.selectbox("Elige al usuario que le quieras mandar el bizum:", destinatarios_disponibles)
+    # Destinatarios disponibles (excluyendo al propio usuario)
+    destinatarios_disponibles = [u["nombre"] for u in db_usuarios.values() if u["nombre"] != mis_datos.get("nombre", usuario_actual_id) and u.get("estado") == "AUTORIZADO"]
     
-    cantidad_bizum = st.number_input("Cantidad de oincalias a enviar:", min_value=1, step=1)
-    mensaje_bizum = st.text_input("Mensaje en el bizum:", placeholder="Escribe un concepto...")
-    
-    if st.button("Enviar Bizum 🚀"):
-        if mis_datos["saldo"] >= cantidad_bizum:
-            # Encontrar el PIN del destinatario
-            pin_receptor = [p for p, u in st.session_state.db.items() if u["nombre"] == usuario_receptor][0]
-            
-            # Restamos al emisor y sumamos al receptor de inmediato
-            st.session_state.db[pin_actual]["saldo"] -= cantidad_bizum
-            st.session_state.db[pin_receptor]["saldo"] += cantidad_bizum
-            
-            # Anotamos los mensajes en los historiales correspondientes
-            msg_emisor = f"Bizum enviado a {usuario_receptor}: -{cantidad_bizum} Oincalias. Mensaje: \"{mensaje_bizum}\""
-            msg_receptor = f"Bizum recibido de {mis_datos['nombre']}: +{cantidad_bizum} Oincalias. Mensaje: \"{mensaje_bizum}\""
-            
-            st.session_state.db[pin_actual]["historial"].append(msg_emisor)
-            st.session_state.db[pin_receptor]["historial"].append(msg_receptor)
-            
-            # Guardamos los cambios de manera persistente en el JSON
-            guardar_base_datos(st.session_state.db)
-            st.success("¡Bizum realizado correctamente!")
-            st.rerun()
-        else:
-            st.error("No posees suficientes oincalias para realizar este Bizum.")
-            
+    if not destinatarios_disponibles:
+        st.info("No hay otros usuarios autorizados disponibles para hacer Bizum.")
+    else:
+        usuario_receptor = st.selectbox("Elige al usuario al que le quieras mandar el bizum:", destinatarios_disponibles)
+        
+        cantidad_bizum = st.number_input("Cantidad de oincalias a enviar:", min_value=1, step=1)
+        mensaje_bizum = st.text_input("Mensaje en el bizum:", placeholder="Escribe un concepto...")
+        
+        if st.button("Enviar Bizum 🚀"):
+            if mis_datos["saldo"] >= cantidad_bizum:
+                # Encontrar clave del receptor
+                id_receptor = [p for p, u in db_usuarios.items() if u["nombre"] == usuario_receptor][0]
+                
+                mis_datos["saldo"] -= cantidad_bizum
+                db_usuarios[id_receptor]["saldo"] += cantidad_bizum
+                
+                nombre_emisor = mis_datos.get("nombre", usuario_actual_id)
+                msg_emisor = f"Bizum enviado a {usuario_receptor}: -{cantidad_bizum} Oincalias. Mensaje: \"{mensaje_bizum}\""
+                msg_receptor = f"Bizum recibido de {nombre_emisor}: +{cantidad_bizum} Oincalias. Mensaje: \"{mensaje_bizum}\""
+                
+                mis_datos["historial"].append(msg_emisor)
+                db_usuarios[id_receptor]["historial"].append(msg_receptor)
+                
+                guardar_base_datos(db_usuarios)
+                st.success("¡Bizum realizado correctamente!")
+                st.rerun()
+            else:
+                st.error("No posees suficientes oincalias para realizar este Bizum.")
+                
     st.markdown("---")
 
     # -----------------------------------------------------
@@ -208,7 +562,9 @@ else:
     else:
         st.info("Tu cuenta no registra movimientos todavía.")
 
-    # Botón de desconexión segura
+    st.divider()
     if st.button("Cerrar Sesión"):
-        st.session_state.usuario_conectado = None
+        st.session_state.autenticado = False
+        st.session_state.usuario_actual = None
+        st.session_state.modo_pantalla = "login"
         st.rerun()
