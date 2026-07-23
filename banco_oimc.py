@@ -597,7 +597,7 @@ else:
         st.markdown("---")
 
     st.subheader("📱 Enviar transferencia instantánea (Bizum)")
-    destinatarios_disponibles = [u["nombre"] for u in db_usuarios.values() if u["nombre"] != mis_datos.get("nombre", usuario_actual_id) and u.get("estado"] == "AUTORIZADO"]
+    destinatarios_disponibles = [u["nombre"] for u in db_usuarios.values() if u["nombre"] != mis_datos.get("nombre", usuario_actual_id) and u.get("estado") == "AUTORIZADO"]
     
     if not destinatarios_disponibles:
         st.info("No hay otros usuarios autorizados disponibles para hacer Bizum.")
