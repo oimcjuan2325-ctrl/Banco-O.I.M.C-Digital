@@ -54,7 +54,6 @@ def cargar_base_datos():
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 datos = json.load(f)
                 
-            # Asegurar siempre que el administrador (BANCO_OIMC) esté perfecto y actualizado
             datos[ADMIN_USER] = {
                 "nombre": "BANCO_OIMC",
                 "gmail": ADMIN_EMAIL,
@@ -67,7 +66,6 @@ def cargar_base_datos():
                 "historial": datos.get(ADMIN_USER, {}).get("historial", []),
                 "solicitudes_bizum": datos.get(ADMIN_USER, {}).get("solicitudes_bizum", [])
             }
-            # Asegurar clave de solicitudes en todos los usuarios antiguos
             for u in datos.values():
                 if "solicitudes_bizum" not in u:
                     u["solicitudes_bizum"] = []
@@ -628,7 +626,7 @@ else:
     st.markdown("---")
 
     # =========================================================
-    # NUEVA SECCIÓN: SOLICITAR BIZUM
+    # NUEVA SECCIÓN: SOLICITAR BIZUM (Completado)
     # =========================================================
     st.subheader("📥 Solicitar transferencia instantánea (Bizum)")
     if not destinatarios_disponibles:
@@ -640,70 +638,54 @@ else:
         
         if st.button("Enviar Solicitud de Bizum 📨"):
             id_receptor_sol = [p for p, u in db_usuarios.items() if u["nombre"] == usuario_solicitado][0]
-            nombre_solicitante = mis_datos.get("nombre", usuario_actual_id)
             
-            # Estructura de la solicitud pendiente en el receptor
-            solicitud_item = {
-                "id": str(datetime.now().timestamp()),
-                "de": nombre_solicitante,
-                "de_id": usuario_actual_id,
+            solicitud_obj = {
+                "de": mis_datos.get("nombre", usuario_actual_id),
                 "cantidad": cantidad_sol_bizum,
                 "mensaje": mensaje_sol_bizum
             }
-            db_usuarios[id_receptor_sol]["solicitudes_bizum"].append(solicitud_item)
             
-            # Registrar en historial del solicitante
-            mis_datos["historial"].append(f"Solicitud de Bizum enviada a {usuario_solicitado}: {cantidad_sol_bizum} Oincalias. Concepto: \"{mensaje_sol_bizum}\"")
-            
+            if "solicitudes_bizum" not in db_usuarios[id_receptor_sol]:
+                db_usuarios[id_receptor_sol]["solicitudes_bizum"] = []
+                
+            db_usuarios[id_receptor_sol]["solicitudes_bizum"].append(solicitud_obj)
             guardar_base_datos(db_usuarios)
-            st.success("¡Solicitud de Bizum enviada correctamente!")
+            st.success(f"Solicitud de Bizum enviada correctamente a {usuario_solicitado}.")
+            time.sleep(1)
             st.rerun()
 
-    st.markdown("---")
-
-    # =========================================================
-    # GESTIÓN DE SOLICITUDES DE BIZUM RECIBIDAS (EN EL HISTORIAL / PENDIENTES)
-    # =========================================================
-    st.subheader("📋 Solicitudes de Bizum Pendientes de Pago")
+    # Mostrar solicitudes de bizum pendientes recibidas
     if mis_datos.get("solicitudes_bizum"):
-        for sol in list(mis_datos["solicitudes_bizum"]):
-            col_s1, col_s2 = st.columns([3, 1])
+        st.markdown("---")
+        st.subheader("🔔 Solicitudes de Bizum pendientes de responder")
+        for idx, sol in enumerate(mis_datos["solicitudes_bizum"]):
+            st.warning(f"Solicitud de **{sol['de']}** por **{sol['cantidad']} Oincalias**. Motivo: *{sol['mensaje']}*")
+            col_s1, col_s2 = st.columns(2)
             with col_s1:
-                st.warning(f"🔔 **{sol['de']}** te ha solicitado un Bizum de **{sol['cantidad']} Oincalias**. Motivo: \"{sol['mensaje']}\"")
-            with col_s2:
-                if st.button("Pagar Solicitud 💸", key=f"pag_sol_{sol['id']}"):
+                if st.button(f"Pagar Solicitud #{idx}", key=f"pagar_sol_{idx}"):
                     if mis_datos["saldo"] >= sol["cantidad"]:
-                        # Descontar al pagador y sumar al solicitante
+                        id_emisor_sol = [p for p, u in db_usuarios.items() if u["nombre"] == sol["de"]][0]
                         mis_datos["saldo"] -= sol["cantidad"]
-                        id_solicitante = sol["de_id"]
+                        db_usuarios[id_emisor_sol]["saldo"] += sol["cantidad"]
                         
-                        if id_solicitante in db_usuarios:
-                            db_usuarios[id_solicitante]["saldo"] += sol["cantidad"]
-                            db_usuarios[id_solicitante]["historial"].append(f"Bizum recibido por solicitud pagada de {mis_datos.get('nombre', usuario_actual_id)}: +{sol['cantidad']} Oincalias.")
+                        mis_datos["historial"].append(f"Bizum pagado (Solicitud) a {sol['de']}: -{sol['cantidad']} Oincalias.")
+                        db_usuarios[id_emisor_sol]["historial"].append(f"Bizum cobrado (Solicitud) de {mis_datos.get('nombre')}: +{sol['cantidad']} Oincalias.")
                         
-                        mis_datos["historial"].append(f"Bizum pagado por solicitud a {sol['de']}: -{sol['cantidad']} Oincalias.")
-                        
-                        # Eliminar la solicitud de la lista
-                        mis_datos["solicitudes_bizum"].remove(sol)
+                        mis_datos["solicitudes_bizum"].pop(idx)
                         guardar_base_datos(db_usuarios)
-                        st.success("¡Solicitud pagada con éxito!")
+                        st.success("¡Bizum de solicitud pagado con éxito!")
                         st.rerun()
                     else:
                         st.error("No tienes suficiente saldo para pagar esta solicitud.")
-    else:
-        st.info("No tienes solicitudes de Bizum pendientes de pago.")
+            with col_s2:
+                if st.button(f"Rechazar Solicitud #{idx}", key=f"rechazar_sol_{idx}"):
+                    mis_datos["solicitudes_bizum"].pop(idx)
+                    guardar_base_datos(db_usuarios)
+                    st.info("Has rechazado la solicitud de Bizum.")
+                    st.rerun()
 
     st.markdown("---")
-
-    st.subheader("🗂️ Historial de tu cuenta bancaria")
-    if mis_datos["historial"]:
-        for transaccion in reversed(mis_datos["historial"]):
-            st.text(f"• {transaccion}")
-    else:
-        st.info("Tu cuenta no registra movimientos todavía.")
-
-    st.divider()
-    if st.button("Cerrar Sesión"):
+    if st.button("Cerrar sesión 🚪"):
         st.session_state.autenticado = False
         st.session_state.usuario_actual = None
         st.rerun()
