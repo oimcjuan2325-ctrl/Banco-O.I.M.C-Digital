@@ -32,7 +32,6 @@ def obtener_fecha_actual():
     mes = MESES[now.month]
     return f"{now.day} de {mes} de {now.year}"
 
-# --- FUNCIONES DE BASE DE DATOS Y CORREO ---
 def cargar_base_datos():
     db_inicial = {
         ADMIN_USER: {
@@ -45,9 +44,30 @@ def cargar_base_datos():
             "saldo": 1160,
             "sc": 100,
             "historial": [],
-            "solicitudes_bizum": []
+            "solicitudes_bizum": [],
+            "inversiones": []
         }
     }
+
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                datos = json.load(f)
+
+            # Asegurar estructura limpia en cada usuario
+            for k, u in list(datos.items()):
+                if isinstance(u, dict) and "nombre" in u:
+                    if "solicitudes_bizum" not in u:
+                        u["solicitudes_bizum"] = []
+                    if "inversiones" not in u:
+                        u["inversiones"] = []
+
+            return datos
+        except Exception:
+            return db_inicial
+    else:
+        guardar_base_datos(db_inicial)
+        return db_inicial
     
     if os.path.exists(DB_FILE):
         try:
@@ -690,17 +710,25 @@ else:
         st.session_state.usuario_actual = None
         st.rerun()
 
-# =========================================================
+# --- LISTA SEGURA DE DESTINATARIOS (Evita KeyErrors) ---
+    destinatarios_disponibles = [
+        u["nombre"] for u in db_usuarios.values() 
+        if isinstance(u, dict) 
+        and "nombre" in u 
+        and u["nombre"] != mis_datos.get("nombre", usuario_actual_id) 
+        and u.get("estado") == "AUTORIZADO"
+    ]
+
+    # =========================================================
     # SECCIÓN: INVERSIONES, FONDOS Y MERCADO BURSÁTIL (IPOs)
     # =========================================================
     st.markdown("---")
     st.subheader("📈 Centro de Inversiones y Bolsa Central O.I.M.C.")
 
-    # Inicializar estructuras seguras en la cuenta del usuario
+    # Inicializar claves necesarias en la cuenta del usuario
     if "inversiones" not in mis_datos:
         mis_datos["inversiones"] = []
 
-    # Usar session_state para aislar las empresas de la lista de usuarios
     if "empresas_bolsa_db" not in st.session_state:
         st.session_state["empresas_bolsa_db"] = {}
 
@@ -844,7 +872,7 @@ else:
             else:
                 st.session_state["empresas_bolsa_db"][nombre_empresa] = {
                     "ceo": ceo_empresa,
-                    "rendimiento": 15.0,  # Rendimiento fijo por defecto para empresas de mercado
+                    "rendimiento": 15.0,
                     "plazo_dias": 7,
                     "fecha_salida": obtener_fecha_actual()
                 }
