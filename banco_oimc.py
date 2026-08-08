@@ -696,11 +696,13 @@ else:
     st.markdown("---")
     st.subheader("📈 Centro de Inversiones y Bolsa Central O.I.M.C.")
 
-    # Inicializar claves necesarias en la base de datos global y del usuario
+    # Inicializar estructuras seguras en la cuenta del usuario
     if "inversiones" not in mis_datos:
         mis_datos["inversiones"] = []
-    if "empresas_bolsa" not in db_usuarios:
-        db_usuarios["empresas_bolsa"] = {}
+
+    # Usar session_state para aislar las empresas de la lista de usuarios
+    if "empresas_bolsa_db" not in st.session_state:
+        st.session_state["empresas_bolsa_db"] = {}
 
     tab_inv_nueva, tab_inv_activas, tab_crear_empresa, tab_mercado_empresas = st.tabs([
         "🚀 Nueva Inversión (Fondos)", 
@@ -823,34 +825,29 @@ else:
                 st.divider()
 
     # ---------------------------------------------------------
-    # TAB 3: ABRIR EMPRESA A BOLSA
+    # TAB 3: ABRIR EMPRESA A BOLSA (Solo Nombre y CEO)
     # ---------------------------------------------------------
     with tab_crear_empresa:
         st.write("### 🛎️ Registrar y Lanzar Empresa a la Bolsa de Valores")
         col_e1, col_e2 = st.columns(2)
         
         with col_e1:
-            nombre_empresa = st.text_input("Nombre de la Empresa:", placeholder="Ej. OIMC tech S.A.", key="emp_nombre")
-            director_empresa = st.text_input("Nombre del Director / CEO:", value=mis_datos.get("nombre", usuario_actual_id), key="emp_director")
-        
+            nombre_empresa = st.text_input("Nombre de la Empresa:", placeholder="Ej. OIMC Tech S.A.", key="emp_nombre")
         with col_e2:
-            rendimiento_estimado = st.slider("Rendimiento Estimado (%):", min_value=1.0, max_value=50.0, value=15.0, step=0.5, key="emp_rend")
-            dias_plazo_emp = st.selectbox("Plazo de Retorno para Inversores:", [3, 7, 14, 30], key="emp_plazo")
+            ceo_empresa = st.text_input("CEO / Director de la Empresa:", placeholder="Ej. Juan Pérez", key="emp_ceo")
 
         if st.button("Lanzar Empresa a Bolsa 🔔"):
-            if not nombre_empresa:
-                st.warning("Escribe el nombre de la empresa antes de cotizar.")
-            elif nombre_empresa in db_usuarios["empresas_bolsa"]:
+            if not nombre_empresa or not ceo_empresa:
+                st.warning("Completa tanto el nombre de la empresa como el nombre del CEO.")
+            elif nombre_empresa in st.session_state["empresas_bolsa_db"]:
                 st.error("Ya existe una empresa cotizando con ese nombre.")
             else:
-                db_usuarios["empresas_bolsa"][nombre_empresa] = {
-                    "director": director_empresa,
-                    "rendimiento": rendimiento_estimado,
-                    "plazo_dias": dias_plazo_emp,
-                    "fundador": usuario_actual_id,
+                st.session_state["empresas_bolsa_db"][nombre_empresa] = {
+                    "ceo": ceo_empresa,
+                    "rendimiento": 15.0,  # Rendimiento fijo por defecto para empresas de mercado
+                    "plazo_dias": 7,
                     "fecha_salida": obtener_fecha_actual()
                 }
-                guardar_base_datos(db_usuarios)
                 st.success(f"¡La empresa '{nombre_empresa}' ha salido a bolsa con éxito!")
                 st.rerun()
 
@@ -859,7 +856,7 @@ else:
     # ---------------------------------------------------------
     with tab_mercado_empresas:
         st.write("### 🏛️ Empresas Cotizando en Bolsa")
-        empresas = db_usuarios.get("empresas_bolsa", {})
+        empresas = st.session_state.get("empresas_bolsa_db", {})
 
         if not empresas:
             st.info("No hay empresas registradas en bolsa actualmente. ¡Sé el primero en abrir una!")
@@ -869,8 +866,7 @@ else:
                 col_m1, col_m2 = st.columns([2, 1])
                 
                 with col_m1:
-                    st.write(f"👤 **Dirigida por:** `{emp_data['director']}`")
-                    # Rendimiento mostrado en pequeño abajo
+                    st.write(f"👔 **CEO:** `{emp_data['ceo']}`")
                     st.caption(f"📈 *Rendimiento estimado del mercado: +{emp_data['rendimiento']}% a {emp_data['plazo_dias']} días*")
 
                 with col_m2:
