@@ -691,7 +691,7 @@ else:
         st.rerun()
 
 # =========================================================
-    # SECCIÓN: INVERSIONES Y FONDOS DE RENDIMIENTO
+    # SECCIÓN: INVERSIONES Y FONDOS DE RENDIMIENTO CON GRÁFICO
     # =========================================================
     st.markdown("---")
     st.subheader("📈 Centro de Inversiones Central O.I.M.C.")
@@ -715,18 +715,23 @@ else:
             )
             monto_inversion = st.number_input("Cantidad de Oincalias a invertir:", min_value=10, step=5, key="monto_inv")
 
-        with col_i2:
-            if "Conservador" in tipo_plan:
-                tasa = 0.05
-                dias = 3
-            elif "Moderado" in tipo_plan:
-                tasa = 0.12
-                dias = 7
-            else:
-                tasa = 0.25
-                dias = 14
+        # Configuración de rendimiento y generación del gráfico
+        if "Conservador" in tipo_plan:
+            tasa = 0.05
+            dias = 3
+            volatilidad = 0.01  # Baja fluctuación
+        elif "Moderado" in tipo_plan:
+            tasa = 0.12
+            dias = 7
+            volatilidad = 0.03  # Fluctuación media
+        else:
+            tasa = 0.25
+            dias = 14
+            volatilidad = 0.08  # Alta fluctuación
 
-            ganancia_estimada = round(monto_inversion * (1 + tasa), 2)
+        ganancia_estimada = round(monto_inversion * (1 + tasa), 2)
+
+        with col_i2:
             st.info(f"""
             📌 **Resumen de la Operación:**
             • **Retorno estimado:** `{ganancia_estimada} Oincalias`
@@ -756,6 +761,23 @@ else:
                 st.rerun()
             else:
                 st.error("No dispones de suficiente saldo para realizar esta inversión.")
+
+        # --- GRÁFICO DE GANANCIAS / PÉRDIDAS EN TIEMPO REAL ---
+        st.write("### 📊 Proyección del Valor de tus Oincalias")
+        
+        # Simulación numérica de trayectoria con NumPy
+        np.random.seed(int(monto_inversion) + dias)
+        pasos = dias * 4  # 4 puntos de control por día
+        ruido = np.random.normal(0, volatilidad, pasos)
+        tendencia = np.linspace(0, tasa, pasos)
+        
+        # Trayectoria de rendimiento acumulado
+        trayectoria = monto_inversion * (1 + tendencia + ruido)
+        trayectoria[0] = monto_inversion  # El punto inicial siempre es el monto invertido
+        trayectoria[-1] = ganancia_estimada  # El valor final coincide con el retorno estipulado
+
+        st.line_chart(trayectoria, height=220)
+        st.caption("📈 *El gráfico muestra las fluctuaciones estimadas de la Oincalia a lo largo del periodo de inversión.*")
 
     with tab_inv_activas:
         if not mis_datos["inversiones"]:
