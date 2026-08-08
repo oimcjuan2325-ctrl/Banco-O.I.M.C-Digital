@@ -689,3 +689,105 @@ else:
         st.session_state.autenticado = False
         st.session_state.usuario_actual = None
         st.rerun()
+
+# =========================================================
+    # SECCIÓN: INVERSIONES Y FONDOS DE RENDIMIENTO
+    # =========================================================
+    st.markdown("---")
+    st.subheader("📈 Centro de Inversiones Central O.I.M.C.")
+
+    # Inicializar clave de inversiones en la cuenta si no existe
+    if "inversiones" not in mis_datos:
+        mis_datos["inversiones"] = []
+
+    tab_inv_nueva, tab_inv_activas = st.tabs(["🚀 Nueva Inversión", "📊 Mis Inversiones Activas"])
+
+    with tab_inv_nueva:
+        col_i1, col_i2 = st.columns(2)
+        with col_i1:
+            tipo_plan = st.selectbox(
+                "Selecciona el tipo de fondo de inversión:",
+                [
+                    "Fondo Conservador (Rendimiento 5% - Plazo 3 días)",
+                    "Fondo Moderado (Rendimiento 12% - Plazo 7 días)",
+                    "Fondo Arriesgado (Rendimiento 25% - Plazo 14 días)"
+                ]
+            )
+            monto_inversion = st.number_input("Cantidad de Oincalias a invertir:", min_value=10, step=5, key="monto_inv")
+
+        with col_i2:
+            if "Conservador" in tipo_plan:
+                tasa = 0.05
+                dias = 3
+            elif "Moderado" in tipo_plan:
+                tasa = 0.12
+                dias = 7
+            else:
+                tasa = 0.25
+                dias = 14
+
+            ganancia_estimada = round(monto_inversion * (1 + tasa), 2)
+            st.info(f"""
+            📌 **Resumen de la Operación:**
+            • **Retorno estimado:** `{ganancia_estimada} Oincalias`
+            • **Ganancia neta:** `+{round(ganancia_estimada - monto_inversion, 2)} Oincalias`
+            • **Duración:** `{dias} días`
+            """)
+
+        if st.button("Confirmar y Realizar Inversión 💼"):
+            if mis_datos["saldo"] >= monto_inversion:
+                mis_datos["saldo"] -= monto_inversion
+                fecha_vencimiento = datetime.now() + timedelta(days=dias)
+                
+                nueva_inv = {
+                    "id": int(time.time()),
+                    "monto": monto_inversion,
+                    "tasa": tasa,
+                    "monto_final": ganancia_estimada,
+                    "fecha_inicio": obtener_fecha_actual(),
+                    "fecha_vencimiento": fecha_vencimiento.isoformat(),
+                    "estado": "ACTIVA"
+                }
+                
+                mis_datos["inversiones"].append(nueva_inv)
+                mis_datos["historial"].append(f"Inversión realizada: -{monto_inversion} Oincalias en {tipo_plan.split('(')[0].strip()}.")
+                guardar_base_datos(db_usuarios)
+                st.success("¡Inversión contratada con éxito!")
+                st.rerun()
+            else:
+                st.error("No dispones de suficiente saldo para realizar esta inversión.")
+
+    with tab_inv_activas:
+        if not mis_datos["inversiones"]:
+            st.info("No tienes inversiones activas ni finalizadas en este momento.")
+        else:
+            for inv in mis_datos["inversiones"]:
+                c1, c2, c3 = st.columns([2, 2, 1])
+                fecha_limite = datetime.fromisoformat(inv["fecha_vencimiento"])
+                completada = datetime.now() >= fecha_limite
+
+                with c1:
+                    st.write(f"💰 **Monto Invertido:** `{inv['monto']} Oincalias`\n\n🎯 **Retorno Total:** `{inv['monto_final']} Oincalias`")
+                with c2:
+                    if inv["estado"] == "LIQUIDADA":
+                        st.write("🟢 **Estado:** LIQUIDADA Y COBRADA")
+                    elif completada:
+                        st.write("🟡 **Estado:** ¡LISTA PARA COBRAR!")
+                    else:
+                        tiempo_rest = fecha_limite - datetime.now()
+                        st.write(f"⏳ **Vence en:** `{tiempo_rest.days}d {tiempo_rest.seconds // 3600}h`")
+                
+                with c3:
+                    if inv["estado"] == "ACTIVA" and completada:
+                        if st.button("Cobrar 💵", key=f"cobrar_{inv['id']}"):
+                            mis_datos["saldo"] += inv["monto_final"]
+                            inv["estado"] = "LIQUIDADA"
+                            mis_datos["historial"].append(f"Inversión cobrada: +{inv['monto_final']} Oincalias.")
+                            guardar_base_datos(db_usuarios)
+                            st.success("¡Capital y rendimientos acreditados a tu saldo!")
+                            st.rerun()
+                    elif inv["estado"] == "LIQUIDADA":
+                        st.write("✅ Finalizada")
+                    else:
+                        st.write("🔒 Bloqueada")
+                st.divider()
