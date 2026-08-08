@@ -691,17 +691,27 @@ else:
         st.rerun()
 
 # =========================================================
-    # SECCIÓN: INVERSIONES Y FONDOS DE RENDIMIENTO CON GRÁFICO
+    # SECCIÓN: INVERSIONES, FONDOS Y MERCADO BURSÁTIL (IPOs)
     # =========================================================
     st.markdown("---")
-    st.subheader("📈 Centro de Inversiones Central O.I.M.C.")
+    st.subheader("📈 Centro de Inversiones y Bolsa Central O.I.M.C.")
 
-    # Inicializar clave de inversiones en la cuenta si no existe
+    # Inicializar claves necesarias en la base de datos global y del usuario
     if "inversiones" not in mis_datos:
         mis_datos["inversiones"] = []
+    if "empresas_bolsa" not in db_usuarios:
+        db_usuarios["empresas_bolsa"] = {}
 
-    tab_inv_nueva, tab_inv_activas = st.tabs(["🚀 Nueva Inversión", "📊 Mis Inversiones Activas"])
+    tab_inv_nueva, tab_inv_activas, tab_crear_empresa, tab_mercado_empresas = st.tabs([
+        "🚀 Nueva Inversión (Fondos)", 
+        "📊 Mis Inversiones Activas",
+        "🏢 Abrir Empresa a Bolsa",
+        "🏛️ Mercado de Acciones (Empresas)"
+    ])
 
+    # ---------------------------------------------------------
+    # TAB 1: FONDOS TRADICIONALES CON GRÁFICO
+    # ---------------------------------------------------------
     with tab_inv_nueva:
         col_i1, col_i2 = st.columns(2)
         with col_i1:
@@ -715,19 +725,18 @@ else:
             )
             monto_inversion = st.number_input("Cantidad de Oincalias a invertir:", min_value=10, step=5, key="monto_inv")
 
-        # Configuración de rendimiento y generación del gráfico
         if "Conservador" in tipo_plan:
             tasa = 0.05
             dias = 3
-            volatilidad = 0.01  # Baja fluctuación
+            volatilidad = 0.01
         elif "Moderado" in tipo_plan:
             tasa = 0.12
             dias = 7
-            volatilidad = 0.03  # Fluctuación media
+            volatilidad = 0.03
         else:
             tasa = 0.25
             dias = 14
-            volatilidad = 0.08  # Alta fluctuación
+            volatilidad = 0.08
 
         ganancia_estimada = round(monto_inversion * (1 + tasa), 2)
 
@@ -746,6 +755,7 @@ else:
                 
                 nueva_inv = {
                     "id": int(time.time()),
+                    "concepto": f"Fondo {tipo_plan.split('(')[0].strip()}",
                     "monto": monto_inversion,
                     "tasa": tasa,
                     "monto_final": ganancia_estimada,
@@ -762,23 +772,21 @@ else:
             else:
                 st.error("No dispones de suficiente saldo para realizar esta inversión.")
 
-        # --- GRÁFICO DE GANANCIAS / PÉRDIDAS EN TIEMPO REAL ---
         st.write("### 📊 Proyección del Valor de tus Oincalias")
-        
-        # Simulación numérica de trayectoria con NumPy
         np.random.seed(int(monto_inversion) + dias)
-        pasos = dias * 4  # 4 puntos de control por día
+        pasos = dias * 4
         ruido = np.random.normal(0, volatilidad, pasos)
         tendencia = np.linspace(0, tasa, pasos)
-        
-        # Trayectoria de rendimiento acumulado
         trayectoria = monto_inversion * (1 + tendencia + ruido)
-        trayectoria[0] = monto_inversion  # El punto inicial siempre es el monto invertido
-        trayectoria[-1] = ganancia_estimada  # El valor final coincide con el retorno estipulado
+        trayectoria[0] = monto_inversion
+        trayectoria[-1] = ganancia_estimada
 
         st.line_chart(trayectoria, height=220)
         st.caption("📈 *El gráfico muestra las fluctuaciones estimadas de la Oincalia a lo largo del periodo de inversión.*")
 
+    # ---------------------------------------------------------
+    # TAB 2: MIS INVERSIONES ACTIVAS
+    # ---------------------------------------------------------
     with tab_inv_activas:
         if not mis_datos["inversiones"]:
             st.info("No tienes inversiones activas ni finalizadas en este momento.")
@@ -789,7 +797,7 @@ else:
                 completada = datetime.now() >= fecha_limite
 
                 with c1:
-                    st.write(f"💰 **Monto Invertido:** `{inv['monto']} Oincalias`\n\n🎯 **Retorno Total:** `{inv['monto_final']} Oincalias`")
+                    st.write(f"🏢 **Tipo:** `{inv.get('concepto', 'Fondo')}`\n\n💰 **Invertido:** `{inv['monto']} Oincalias` | 🎯 **Retorno:** `{inv['monto_final']} Oincalias`")
                 with c2:
                     if inv["estado"] == "LIQUIDADA":
                         st.write("🟢 **Estado:** LIQUIDADA Y COBRADA")
@@ -812,4 +820,85 @@ else:
                         st.write("✅ Finalizada")
                     else:
                         st.write("🔒 Bloqueada")
+                st.divider()
+
+    # ---------------------------------------------------------
+    # TAB 3: ABRIR EMPRESA A BOLSA
+    # ---------------------------------------------------------
+    with tab_crear_empresa:
+        st.write("### 🛎️ Registrar y Lanzar Empresa a la Bolsa de Valores")
+        col_e1, col_e2 = st.columns(2)
+        
+        with col_e1:
+            nombre_empresa = st.text_input("Nombre de la Empresa:", placeholder="Ej. OIMC tech S.A.", key="emp_nombre")
+            director_empresa = st.text_input("Nombre del Director / CEO:", value=mis_datos.get("nombre", usuario_actual_id), key="emp_director")
+        
+        with col_e2:
+            rendimiento_estimado = st.slider("Rendimiento Estimado (%):", min_value=1.0, max_value=50.0, value=15.0, step=0.5, key="emp_rend")
+            dias_plazo_emp = st.selectbox("Plazo de Retorno para Inversores:", [3, 7, 14, 30], key="emp_plazo")
+
+        if st.button("Lanzar Empresa a Bolsa 🔔"):
+            if not nombre_empresa:
+                st.warning("Escribe el nombre de la empresa antes de cotizar.")
+            elif nombre_empresa in db_usuarios["empresas_bolsa"]:
+                st.error("Ya existe una empresa cotizando con ese nombre.")
+            else:
+                db_usuarios["empresas_bolsa"][nombre_empresa] = {
+                    "director": director_empresa,
+                    "rendimiento": rendimiento_estimado,
+                    "plazo_dias": dias_plazo_emp,
+                    "fundador": usuario_actual_id,
+                    "fecha_salida": obtener_fecha_actual()
+                }
+                guardar_base_datos(db_usuarios)
+                st.success(f"¡La empresa '{nombre_empresa}' ha salido a bolsa con éxito!")
+                st.rerun()
+
+    # ---------------------------------------------------------
+    # TAB 4: MERCADO DE ACCIONES (INVERTIR EN EMPRESAS)
+    # ---------------------------------------------------------
+    with tab_mercado_empresas:
+        st.write("### 🏛️ Empresas Cotizando en Bolsa")
+        empresas = db_usuarios.get("empresas_bolsa", {})
+
+        if not empresas:
+            st.info("No hay empresas registradas en bolsa actualmente. ¡Sé el primero en abrir una!")
+        else:
+            for emp_nombre, emp_data in empresas.items():
+                st.markdown(f"#### 🏢 {emp_nombre}")
+                col_m1, col_m2 = st.columns([2, 1])
+                
+                with col_m1:
+                    st.write(f"👤 **Dirigida por:** `{emp_data['director']}`")
+                    # Rendimiento mostrado en pequeño abajo
+                    st.caption(f"📈 *Rendimiento estimado del mercado: +{emp_data['rendimiento']}% a {emp_data['plazo_dias']} días*")
+
+                with col_m2:
+                    monto_inv_emp = st.number_input(f"Oincalias a invertir:", min_value=5, step=5, key=f"inv_m_{emp_nombre}")
+                    if st.button(f"Invertir en {emp_nombre} 🤝", key=f"btn_inv_{emp_nombre}"):
+                        if mis_datos["saldo"] >= monto_inv_emp:
+                            tasa_emp = emp_data["rendimiento"] / 100.0
+                            ganancia_emp = round(monto_inv_emp * (1 + tasa_emp), 2)
+                            fecha_venc_emp = datetime.now() + timedelta(days=emp_data["plazo_dias"])
+
+                            mis_datos["saldo"] -= monto_inv_emp
+                            
+                            nueva_inv_emp = {
+                                "id": int(time.time()),
+                                "concepto": f"Acciones de {emp_nombre}",
+                                "monto": monto_inv_emp,
+                                "tasa": tasa_emp,
+                                "monto_final": ganancia_emp,
+                                "fecha_inicio": obtener_fecha_actual(),
+                                "fecha_vencimiento": fecha_venc_emp.isoformat(),
+                                "estado": "ACTIVA"
+                            }
+                            
+                            mis_datos["inversiones"].append(nueva_inv_emp)
+                            mis_datos["historial"].append(f"Inversión bursátil: -{monto_inv_emp} Oincalias en {emp_nombre}.")
+                            guardar_base_datos(db_usuarios)
+                            st.success(f"¡Has adquirido acciones de {emp_nombre}!")
+                            st.rerun()
+                        else:
+                            st.error("No tienes suficiente saldo para esta inversión.")
                 st.divider()
